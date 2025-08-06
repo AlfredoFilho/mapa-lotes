@@ -21,7 +21,7 @@ for elem in root.iter():
         lote_id += 1
 
 # Caminho para o novo SVG modificado
-svg_output_path = "lotes.svg"
+svg_output_path = "final.svg"
 tree.write(svg_output_path)
 
 svg_output_path
