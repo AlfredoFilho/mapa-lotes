@@ -1,35 +1,96 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mapa de Lotes Interativo</title>
   <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #efefef;
+    }
+
     body {
       font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
     }
+
     h2 {
       text-align: center;
+      margin: 10px 0;
+      flex-shrink: 0;
+      color: black;
     }
+
+    #searchContainer {
+      text-align: center;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+
+    #searchInput {
+      padding: 5px 8px;
+      font-size: 16px;
+      width: 200px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      margin-right: 5px;
+    }
+
+    #searchButton {
+      padding: 6px 12px;
+      font-size: 16px;
+      border-radius: 4px;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+
+    #searchButton:hover {
+      background-color: #0056b3;
+    }
+
     object#svgObj {
+      flex-grow: 1;
+      width: 100vw;
+      height: calc(100vh - 120px);
+      /* considerando espaço para o input e título */
+      border: none;
       display: block;
-      max-width: 100%;
-      height: auto;
-      margin: 0 auto;
     }
+
     .lote {
       fill: #ccc;
       stroke: #333;
       stroke-width: 0.5;
       cursor: pointer;
-      transition: stroke 0.2s, stroke-width 0.2s;
+      transition: stroke 0.2s, stroke-width 0.2s, fill 0.3s;
     }
+
     .lote:hover {
       stroke: red;
       stroke-width: 2;
     }
+
+    @keyframes blink {
+      from {
+        stroke-opacity: 1;
+      }
+
+      to {
+        stroke-opacity: 0.2;
+      }
+    }
+
     /* Estilo do modal */
     .modal {
       display: none;
@@ -40,10 +101,11 @@
       width: 100vw;
       height: 100vh;
       overflow: auto;
-      background-color: rgba(0,0,0,0.6);
+      background-color: rgba(0, 0, 0, 0.6);
       padding: 10px;
       box-sizing: border-box;
     }
+
     .modal-content {
       background-color: #fff;
       margin: 20% auto;
@@ -51,10 +113,11 @@
       border-radius: 10px;
       width: 90%;
       max-width: 400px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       position: relative;
       text-align: center;
     }
+
     .close {
       position: absolute;
       right: 12px;
@@ -64,50 +127,192 @@
       color: #666;
       cursor: pointer;
     }
+
     .close:hover {
       color: #000;
     }
+
+    #resetButton {
+      padding: 6px 12px;
+      font-size: 16px;
+      border-radius: 4px;
+      border: none;
+      background-color: #6c757d;
+      color: white;
+      cursor: pointer;
+    }
+
+    #resetButton:hover {
+      background-color: #495057;
+    }
   </style>
 </head>
+
 <body>
 
-<h2>Mapa de Lotes</h2>
+  <h2>Mapa de Lotes</h2>
 
-<object id="svgObj" type="image/svg+xml" data="img_interativo.svg"></object>
-
-<div id="loteModal" class="modal">
-  <div class="modal-content">
-    <span class="close" onclick="document.getElementById('loteModal').style.display='none'">&times;</span>
-    <p id="modalText">Informação do lote</p>
+  <div id="searchContainer">
+    <input type="text" id="searchInput" placeholder="Digite o código do lote..." />
+    <button id="searchButton">Buscar</button>
+    <button id="resetButton">Resetar Visualização</button>
   </div>
-</div>
 
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const svgObject = document.getElementById("svgObj");
-    const modal = document.getElementById("loteModal");
-    const modalText = document.getElementById("modalText");
+  <object id="svgObj" type="image/svg+xml" data="final.svg"></object>
 
-    svgObject.addEventListener("load", () => {
-      const svgDoc = svgObject.contentDocument;
-      const lotes = svgDoc.querySelectorAll(".lote");
+  <div id="loteModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="document.getElementById('loteModal').style.display='none'">&times;</span>
+      <p id="modalText">Informação do lote</p>
+    </div>
+  </div>
 
-      lotes.forEach(lote => {
-        lote.addEventListener("click", () => {
-          modalText.innerText = lote.dataset.info;
-          modal.style.display = "block";
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const svgObject = document.getElementById("svgObj");
+      const modal = document.getElementById("loteModal");
+      const modalText = document.getElementById("modalText");
+      const searchInput = document.getElementById("searchInput");
+      const searchButton = document.getElementById("searchButton");
+      const resetButton = document.getElementById("resetButton");
+
+      let lotes;
+      let svgRoot;
+      let originalViewBox;
+      let loteDestacadoAtual = null;
+
+      function destacarLote(lote) {
+        // Resetar visualização para evitar zoom duplo
+        svgRoot.setAttribute("viewBox", originalViewBox);
+
+        if (loteDestacadoAtual) {
+          loteDestacadoAtual.removeAttribute("style");
+        }
+
+        lote.setAttribute("style", `
+        fill: gray;
+        stroke-width: 2;
+        animation: blink 0.8s infinite alternate;
+      `);
+
+        lote.parentNode.appendChild(lote);
+        loteDestacadoAtual = lote;
+
+        const bbox = lote.getBBox();
+        const padding = 90;
+        const x = bbox.x - padding;
+        const y = bbox.y - padding;
+        const width = bbox.width + padding * 2;
+        const height = bbox.height + padding * 2;
+
+        svgRoot.setAttribute("viewBox", `${x} ${y} ${width} ${height}`);
+      }
+
+      svgObject.addEventListener("load", () => {
+        const svgDoc = svgObject.contentDocument;
+        svgRoot = svgDoc.querySelector("svg");
+        originalViewBox = svgRoot.getAttribute("viewBox");
+
+        // Se não tiver viewBox, definir um padrão
+        if (!originalViewBox) {
+          const w = svgRoot.clientWidth || 1000;
+          const h = svgRoot.clientHeight || 1000;
+          originalViewBox = `0 0 ${w} ${h}`;
+          svgRoot.setAttribute("viewBox", originalViewBox);
+        }
+
+        lotes = svgDoc.querySelectorAll(".lote");
+
+        lotes.forEach(lote => {
+          if (lote.id === "lote_001") return; // ignora o lote 001
+
+          lote.addEventListener("click", () => {
+            destacarLote(lote);
+            modalText.innerText = lote.dataset.info;
+            modal.style.display = "block";
+          });
         });
+
+        // --- Zoom com scroll do mouse
+        svgRoot.addEventListener("wheel", (event) => {
+          event.preventDefault();
+
+          const zoomFactor = 1.1;
+          const delta = event.deltaY;
+
+          let [x, y, width, height] = svgRoot.getAttribute("viewBox").split(" ").map(Number);
+
+          const svgRect = svgObject.getBoundingClientRect();
+          const mouseX = event.clientX - svgRect.left;
+          const mouseY = event.clientY - svgRect.top;
+
+          const zoomCenterX = x + (mouseX / svgRect.width) * width;
+          const zoomCenterY = y + (mouseY / svgRect.height) * height;
+
+          if (delta > 0) {
+            width *= zoomFactor;
+            height *= zoomFactor;
+          } else {
+            width /= zoomFactor;
+            height /= zoomFactor;
+          }
+
+          const minWidth = 100;
+          const maxWidth = originalViewBox ? Number(originalViewBox.split(" ")[2]) : 10000;
+
+          width = Math.min(Math.max(width, minWidth), maxWidth);
+          height = Math.min(Math.max(height, minWidth), maxWidth);
+
+          x = zoomCenterX - width / 2;
+          y = zoomCenterY - height / 2;
+
+          svgRoot.setAttribute("viewBox", `${x} ${y} ${width} ${height}`);
+        }, { passive: false });
+      });
+
+      searchButton.addEventListener("click", () => {
+        if (!lotes) return;
+
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        if (!searchTerm) {
+          alert("Por favor, digite o código do lote.");
+          svgRoot.setAttribute("viewBox", originalViewBox);
+          return;
+        }
+
+        const loteEncontrado = Array.from(lotes).find(lote =>
+          lote.dataset.info.toLowerCase().includes(searchTerm)
+        );
+
+        if (loteEncontrado) {
+          destacarLote(loteEncontrado);
+          modalText.innerText = loteEncontrado.dataset.info;
+          modal.style.display = "block";
+        } else {
+          alert("Lote não encontrado!");
+          svgRoot.setAttribute("viewBox", originalViewBox);
+        }
+      });
+
+      resetButton.addEventListener("click", () => {
+        if (svgRoot && originalViewBox) {
+          svgRoot.setAttribute("viewBox", originalViewBox);
+          if (lotes) {
+            lotes.forEach(lote => lote.removeAttribute("style"));
+          }
+          loteDestacadoAtual = null;
+        }
       });
     });
-  });
 
-  window.onclick = function(event) {
-    const modal = document.getElementById("loteModal");
-    if (event.target == modal) {
-      modal.style.display = "none";
-    }
-  }
-</script>
+    window.onclick = function (event) {
+      const modal = document.getElementById("loteModal");
+      if (event.target == modal) {
+        modal.style.display = "none";
+      }
+    };
+  </script>
 
 </body>
+
 </html>
